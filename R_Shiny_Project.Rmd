@@ -1,0 +1,611 @@
+################################################################################
+######## Credit Risk Classification Model For Bank and Digital Marketing ########
+################################################################################
+
+Abstract
+Accurate segmentation of clients is crucial in the success of any business enterprise. It serves the dual purpose of helping the business deal with the client based on their types and also in digital marketing in creating lookalikes. This study is about the binary classification of loan seeking bank customers based on whether they are likely to defualt or not.
+
+When a customer seeks for a loan, banks and other credit providers should use statistical models to determine whether or not to grant the loan based on the likelihood of the loan being repaid or not. The factors involved in determining this likelihood are complex, and extensive statistical analysis and modeling are required to predict the outcome for each individual case. This model predicts loan repayment or default based on the data provided.
+
+Method
+We ran successive tests and by backwards selection we removed predictors that have not much significant contribution to the outcome of the model. We obtained the model that yielded the greatest accuracy and the least complexity
+
+We built a browser-based user interface using Shiny for banks and digital marketers to easily visualize predicted outcomes. In its current implementation, the application enables clients to make numerical inputs and obtain instant outputs and to visualize the predictors.
+
+Dataset Description
+The dataset consists of a synthetic bank data that was generated specifically research purposes. The data was designed to exhibit similar characteristics to genuine loan data.It consists of 77,823 and 20 columns loan records. Our project determines the best way to predict whether a loan applicant will fully repay or default on a loan. We build a machine learning model that returns the unique loan ID and a loan status label that indicates whether the loan will be fully paid, charged off or uncertain status.
+It is publicly available on  "https://raw.githubusercontent.com/reubence/PM/master/CRM_TrainData.csv" 
+
+
+The predictors are:
+• Loan ID: A unique Identifier for the loan information.
+• Customer ID: A unique identifier for the customer. Customers may have more than one loan.
+• Loan Status: A categorical variable indicating if the loan was paid back or defaulted.
+• Current Loan Amount: This is the loan amount that was either completely paid off, or the amount that was defaulted.
+• Term: A categorical variable indicating if it is a short term or long term loan.
+• Credit Score: A value between 0 and 800 indicating the riskiness of the borrower’s credit history.
+• Years in current job: A categorical variable indicating how many years the customer has been in their current job.
+• Home Ownership: Categorical variable indicating home ownership. Values are "Rent", "Home Mortgage", and "Own". If the value is OWN, then the customer is a home owner with no mortgage.
+• Annual Income: The customer's annual income
+• Purpose: A description of the purpose of the loan.
+• Monthly Debt: The customer's monthly payment for their existing loans
+• Years of Credit History: The years since the first entry in the customer’s credit history
+• Months since last delinquent: Months since the last loan delinquent payment
+• Number of Open Accounts: The total number of open credit cards
+• Number of Credit Problems: The number of credit problems in the customer records.
+• Current Credit Balance: The current total debt for the customer
+• Maximum Open Credit: The maximum credit limit for all credit sources.
+• Bankruptcies: The number of bankruptcies
+• Tax Liens: The number of tax liens.
+
+
+
+
+
+
+
+
+
+
+
+###########################################################
+######Objective############################################
+##########################################################
+
+
+We analyse the historical data of the bank loans record with the aim of predicting the credit risk of a loan-seeking client.  Granting loans only to the right client is the most important operations for sustainability of a banking institution.
+Using  past results, we need to train different models to accurately predict future outcomes.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE , warning = FALSE , message = FALSE)
+```
+
+###########################################################
+######Load data and Libraries############################################
+##########################################################
+We will make use of the following libraries.
+
+```{r}
+library(caret)
+library(tidyverse)
+library(ggthemes)
+library(corrplot)
+library(GGally)
+library(DT)
+
+
+```
+
+
+
+
+#Import the datasets
+
+```{r}
+loan = read_csv("~/Desktop/R_Shiny_Project/loan.csv")
+loan
+```
+# View columns names and check for missing data
+```{r columns names}
+colnames(loan)
+```
+#Get the summary of the data
+```{r}
+summary(loan)
+```
+
+
+```{r}
+sapply(loan , function(x) sum(is.na(x)))
+```
+```{r}
+loan$`Credit Score`[!is.na(loan$`Annual Income`)]
+```
+```{r}
+loan$`Annual Income`[!is.na(loan$`Annual Income`)]
+```
+
+
+# Visualize the dataset
+
+
+
+```{r Loan_status}
+loan %>%
+        count(`Loan Status`) %>%
+        ggplot(aes(y = reorder(`Loan Status` , desc(n)) , x = n , fill = n)) + 
+        geom_col() + coord_flip() + labs(x = 'Loan Status' , y = 'Count')
+
+```
+
+
+
+# Feature Selection & Engineering
+Convert this categorical variable to binary variable: loan_outcome -> 1 if loan_status = 'Charged Off'. loan_outcome -> 0 if loan_status = 'Fully Paid'
+
+
+#(1) Create a new dataset replacing Loan Status with loan_outcome.
+#(2) Where bankrupticies is NA, repalace it with 0. 
+#(3) Convert years in current Job to numeric
+#(4) Harmonize loan Purpose, replacing "other" with "Other"
+#(5) If the credit scoreis greater 800, retain the first three digtis
+#(6) Replace missing data in Tax Lien with the median
+#Replace missing NA with the median
+#Replace maximum open credits with the median
+#Replace missing value in Monthly Debt with median
+#Dropt `Months since last delinquent` 
+```{r loan2}
+# Create the new dataset for removing NA
+loan2 = loan  
+
+loan2$loan_outcome = ifelse(loan2$`Loan Status` == "Charged Off", 1, 0)
+loan2$`Years in current job`  = ifelse(as.numeric(status) %in% seq(0:60), as.numeric(substr(loan2$`Years in current job`, 0,2)), 0)
+
+loan2$Purpose = ifelse(loan2$Purpose == "other", "Other", ifelse(loan2$Purpose == "small_business", "Business Loan", loan2$Purpose))
+
+loan2$`Credit Score` = ifelse(loan2$`Credit Score`>800, as.numeric(substr(loan2$`Credit Score`, 0,3)), as.numeric(loan2$`Credit Score`))
+
+#mean = mean(loan2$`Annual Income`[!is.na(loan2$`Annual Income`)])
+#loan2$`Annual Income` = ifelse((is.na(loan2$`Annual Income`)) | loan2$`Annual Income` >1000000, mean, as.numeric(loan2$`Annual Income`))
+loan2$`Bankruptcies` =ifelse(is.na(loan2$`Bankruptcies`),0, ifelse(loan2$`Bankruptcies`>=1, 1, 0))
+loan2$`Tax Liens` = ifelse(is.na(loan2$`Tax Liens`), median(loan2$`Tax Liens`[!is.na(loan2$`Tax Liens`)]), loan2$`Tax Liens`)
+
+loan2$`Monthly Debt` = ifelse((loan2$`Monthly Debt`)>=999999, 12*median(loan2$`Monthly Debt`[loan2$`Monthly Debt`< 999999]), 12*loan2$`Monthly Debt`)
+
+loan2$`Maximum Open Credit` = ifelse(is.na(loan2$`Maximum Open Credit`),median(loan2$`Maximum Open Credit`[!is.na(loan2$`Maximum Open Credit`)]), loan2$`Maximum Open Credit`)
+
+loan2$`Monthly Debt` = ifelse(is.na(loan2$`Monthly Debt`), median(!is.na(loan2$`Monthly Debt`)), loan2$`Monthly Debt`)
+loan2$`Annual Income` = ifelse(loan2$`Annual Income`>400000, median(!is.na(loan2$`Annual Income`)), loan2$`Annual Income`)
+loan2$`Months since last delinquent`=NULL
+loan2= loan2%>% filter(!is.na(loan2$`Credit Score`))
+
+```
+```{r}
+
+sapply(loan2 , function(x) sum(is.na(x)))
+
+```
+```{r}
+plot(loan2$`Current Loan Amount`[loan2$`Current Loan Amount`<999999]~loan2$`Monthly Debt`[loan2$`Current Loan Amount`<999999])
+```
+There is a significant linear relationship between the Current Loan Amount and the Monthly Debt. We will use this model to predict the values of the values when the current loan amount =999999
+
+
+```{r}
+loan2$`Current Loan Amount` = ifelse(loan2$`Current Loan Amount`>999999 , model$coefficients[1]+(model$coefficients[2])*loan2$`Monthly Debt`, loan2$`Current Loan Amount`)
+```
+```{r}
+loan2 = loan2%>% mutate(`Debt Ratio`=(`Current Loan Amount`+`Monthly Debt`)/(0.001+`Annual Income`))
+loan2 = loan2%>% mutate(`Hist Ratio`=(`Years of Credit History`)/(0.001+`Number of Open Accounts`))
+```
+
+```{r}
+loan2
+```
+
+
+
+```{r}
+sapply(loan2, function(x)sum(is.na(x)))
+```
+
+
+#Visualise the relationships between the predictors
+```{r Plot}
+ggplot(loan2 , aes(x = `Loan Status` , y = ..count.., fill = factor(loan_outcome , c(1 , 0) , c('Default' , 'No Default')) )) + 
+        geom_bar() + theme(legend.title = element_blank())
+```
+
+
+
+
+
+
+
+
+```{r}
+colnames(loan2)
+```
+
+
+
+
+
+
+
+```{r}
+clean_loan =loan2
+
+
+```
+
+
+
+
+`Credit Score`, `Annual Income`, `Debt Ratio`,`Tax Liens`, `Number of Open Accounts`, `Years of Credit History`,Bankruptcies, `Maximum Open Credit`,`Years in current job`,`Current Loan Amount`, `Current Credit Balance`, `Number of Credit Problems`, `Credit Problems`,`Monthly Debt`
+
+
+```{r grade_boxplot}
+ggplot(clean_loan, aes(x = as.factor(loan_outcome), y = `Credit Score`, fill = loan_outcome)) + geom_boxplot()+labs(x= "Loan Outcome") 
+```
+
+```{r Annual Income boxplot}
+ggplot(clean_loan, aes(x = as.factor(loan_outcome), y = `Annual Income`)) + geom_boxplot(aes(fill =loan_outcome))+labs(x= "Loan Outcome") 
+```
+```{r Credit Score vs Purpose}
+ggplot(clean_loan%>% group_by(Purpose), aes(x = as.factor(Purpose), y = `Credit Score`)) + geom_boxplot(aes(fill =Purpose))+labs(x ="Purpose") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+```{r table of predictions}
+table =table(clean_loan$`Credit Score` , factor(clean_loan$loan_outcome , c(0 , 1) , c('Fully Paid' , 'Default')))
+ggplot(clean_loan , aes(x =`Credit Score` , y = ..count.. , fill = factor(loan_outcome , c(1 , 0) , c('Default' , 'Fully Paid')))) + 
+          theme(legend.title = element_blank()) + geom_bar() +geom_density()+labs(title= "Credit Score agains Lon_out")
+table
+```
+
+```{r}
+#my_cols <- c( "#00AFBB", "#FC4E07") 
+#clean_loan =clean_loan[2:19]
+```
+
+```{r}
+#corr = cor(clean_loan[c(21, 5,7,8,10,12,13,14,17,18,19,20)])
+#corr
+```
+
+Startin with all the variables,we create our model via backwards selection, taking not of the AIC and the p-values of each predictor. We drop the predictors that are not significant to our hypothesis. Our goal is to minimize the AIC while minimizing the complexity of the model.
+
+```{r}
+clean_loan = clean_loan[c(2:22)]
+clean_loan
+```
+
+
+# Data modelling
+
+#Modelling Process:
+
+#* We created the binary loan_outcome which will be our response variable.
+#* We exclude some predictors in order to make the model simpler.
+#* We split the dataset to training set(75%) and testing set(25%) for the validation.
+#* We train a model to predict the probability of default.
+#Because we have binary response variables, we will make use  of logistic regression instead of  modelling the response variable Y directly. The logistic regression models the probability that Y belongs to a particular category, in our case the probability of a non-performing loan. This probability can be computed by the logistic function with
+
+ p = exp(X.beta) / [ 1 + exp(X.beta) ]
+
+where X.beta is the linear combination of the predictors X and beta are the coeficients.
+
+```{r}
+# Split dataset  25/75 into trainset and testset
+clean_loan1= clean_loan
+
+clean_loan1$loan_outcome = as.numeric(clean_loan1$loan_outcome)
+idx = sample(nrow(clean_loan1) , 0.25*nrow(clean_loan1) , replace = F)
+trainset = clean_loan1[idx , ]
+testset = clean_loan1[-idx , ]
+
+# Fit logistic regression
+glm.model = glm(loan_outcome ~ `Credit Score`+`Annual Income`+`Debt Ratio`+`Monthly Debt`+`Current Loan Amount`, trainset, family = "binomial")
+summary(glm.model)
+```
+The coefficients of the following features is positive and significant:
+
+
+`Debt Ratio` 
+`Current Loan Amount` 
+This means the probability of defaulting on the given credit varies directly with these factors. For example, the more the Debt an induvudual owes, the more unlikely it is that they will be able to pay off more debts.
+
+The coefficients of the following features are negative and significant:
+TermShort Term  
+`Credit Score`  
+`Annual Income` 
+
+There is no significant difference in the other variables
+#We create a simpler model using only the significant predictors.
+
+
+
+
+```{r}
+# Prediction on test set
+preds = predict(glm.model , testset , type = 'response')
+
+# Density of probabilities
+ggplot(data.frame(preds) , aes(preds)) + 
+        geom_density(fill = 'lightblue' , alpha = 1) +
+        labs(x = 'Predicted Probabilities on test set')
+```
+
+
+
+
+
+
+#Accurary Score
+
+Lets explore the accuracy, sensitivity and specificity, f1score and balanced mean  for each threshold. From the probability density function above, the threshold is 0.5 for the posterior probability of default in order to assign an observation to the default class. However, if we are concerned about incorrectly predicting the default status for individuals who default, then we can consider lowering this threshold. So we will consider metrics for threshold levels from 0.01 up to 0.05.
+
+```{r}
+
+k = 0
+accuracy = c()
+sensitivity = c()
+specificity = c()
+precision=c()
+f1score =c()
+balanced_mean =c()
+stepsize = 0.01
+confusionMatrix =c()
+thresholds  = seq(from = 0.01 , to = 0.5 , by = stepsize)
+for(i in thresholds){
+  k = k + 1
+  preds_binomial = ifelse(preds > i , 1 , 0)
+  #print(preds_binomial)
+  confmat = table(testset$loan_outcome , preds_binomial)
+  #print(confmat)
+  #confusionMatrix[k] = list(confmat[1,1], confmat[1,2], confmat[2,1], confmat[2,2])
+  #print(confmat)
+  #print(" ")
+  
+  confmat = table(testset$loan_outcome , preds_binomial)
+  accuracy[k] = sum(diag(confmat)) / sum(confmat)
+  sensitivity[k] = confmat[1 , 1] / sum(confmat[ , 1])
+  specificity[k] = confmat[2 , 2] / sum(confmat[ , 2])
+  precision[k] = confmat[1 , 1] / sum(confmat[ , 1])
+  f1score[k] = 2 * sensitivity[k]*precision[k]/(sensitivity[k] + precision[k])
+  balanced_mean[k] = 0.5 * (sensitivity[k]+specificity[k])
+  confusionMatrix[k] = array(list(confmat))
+}
+confusionMatrix[10]
+```
+
+
+```{r}
+confusionMatrix[15]
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+# We can combine the indices in a table and plot on a single frame
+```{r}
+data =  data.frame(thresholds , accuracy , sensitivity , specificity, precision, f1score, balanced_mean)
+data
+```
+
+```{r}
+cutoff= 0.215
+newdata = gather(data, key = 'Metric' , value = 'Value', 2:7 )
+newdata
+```
+We may wish to visualize the variations of the indices across thresholds:
+```{r}
+# We gather  accuracy , sensitivity and specificity in one column
+cutoff =0.2
+ggplot(newdata, aes(x = thresholds , y = Value , color = Metric)) + geom_line(size = 1)+geom_vline(xintercept =  cutoff,color="red" , linetype = "dashed")
+```
+
+
+# The accuaracy stabilizes at around p = 0.4 and we use this as our cutoff point and obtain an accuracy of about 78% This means that we can preddict with our model about 78 percent of the times whether a client will certainly default on payment or certainly fully pay their loans. In this case we deny loan to 1572 clients out of which 610 are actually potential defaulters and 41154 non defaulters that didnt default.
+
+
+The Confusion Matrix for cut off point at 0.215 will be:
+
+```{r}
+
+preds_binomial = ifelse(preds > .4, 1 , 0)
+table(testset$loan_outcome , preds_binomial)
+```
+#However, it depends on the objective of the bank. For example, if avoiding bad loans at all cost is more important to the bank than loosing pontential viable customers, then we may forgo the accurracy and maximize the f1score with probability cut off at 0.215 and accuracy of 63% 
+In this case we deny loan to 15006 clients out of which 4514 are actually potential defaulters. We predicted accurately a total of 36038 outcomes. 
+
+
+We use the ROC curve to show the errors for all possible thresholds.
+```{r}
+testset
+```
+
+
+
+```{r}
+library(pROC)
+modelroc = roc(testset$loan_outcome , preds) 
+plot(modelroc, print.auc=TRUE, auc.polygon=TRUE,
+     grid=c(0.1, 0.2), grid.col=c("green", "red"),
+     max.auc.polygon=TRUE, auc.polygon.col="skyblue", print.thres=TRUE)
+```
+```{r}
+preds_binomial = ifelse(preds > cutoff, 1 , 0)
+#potential_defaulters =testset%>% filter(preds_binomial==1 & testset$loan_outcome==1)
+#potential_nondefaulters = testset%>% filter(preds_binomial==0 & testset$loan_outcome==0)
+#uncertain_clents = testset%>% filter((preds_binomial==1 & testset$loan_outcome==0)|(preds_binomial==0 & testset$loan_outcome==1))
+
+testset$prediction =ifelse((preds_binomial==1 & testset$loan_outcome==1),"Potential Defaulter", ifelse((preds_binomial==0 & testset$loan_outcome==0), "Potential Nondefaulter", "Uncertain Client"))
+testset
+```
+```{r}
+#For "Uncertail client" we might use some other metrics to determine their status
+testset2 = testset%>% filter(testset$prediction=="Uncertain Client")
+
+
+testset2
+```
+
+```{r}
+# Split dataset 
+idx2 = sample(nrow(testset2), 0.35*nrow(testset2) , replace = F)
+trainset3 = testset2[idx2 , ]
+testset3 = testset2
+
+# Fit logistic regression
+glm.model2 = glm(loan_outcome ~ ., trainset3[c(19,20,11,9,7,6)] , family = "binomial")
+summary(glm.model2)
+```
+
+```{r}
+preds2 = predict(model , testset2 , type = 'response')
+modelroc2 = roc(testset2$loan_outcome , preds2) 
+plot(modelroc2, print.auc=TRUE, auc.polygon=TRUE,
+     grid=c(0.1, 0.2), grid.col=c("green", "red"),
+     max.auc.polygon=TRUE, auc.polygon.col="skyblue", print.thres=TRUE)
+```
+
+```{r}
+
+new_prediction =ifelse(preds2>cutoff, 1,0)
+#new_prediction
+```
+```{r}
+
+#potential_defaulters =testset%>% filter(preds_binomial==1 & testset$loan_outcome==1)
+#potential_nondefaulters = testset%>% filter(preds_binomial==0 & testset$loan_outcome==0)
+#uncertain_clents = testset%>% filter((preds_binomial==1 & testset$loan_outcome==0)|(preds_binomial==0 & testset$loan_outcome==1))
+
+testset$prediction = ifelse(testset$prediction=="Potential Nondefaulter", "Potential Nondefaulter", ifelse(testset$prediction=="Potential Defaulter", "Potential Defaulter",ifelse((new_prediction==1 & testset$loan_outcome==1),"Potential Defaulter", ifelse((new_prediction==0 & testset$loan_outcome==0), "Potential Nondefaulter", "Status Unkwown"))))
+testset#%>% filter(`Customer ID`=="dc755ef2-1773-4d3b-8b6b-668bbae290c5")
+
+```
+
+
+```{r}
+
+table(testset2$loan_outcome , new_prediction)
+```
+
+
+
+
+
+
+
+
+
+
+# Conclusion
+
+A logistic regression model was used to predict the loan status. Different cut off's were used to decide if the loan should be granted or not. Cut off of 30% gave a good accuracy of `r round(sum(diag(confusion_matrix_30)) / sum(confusion_matrix_30)*100 , 2)`%. The decision to set a cut off is arbitrary and higher levels of threshold increases the risk. The Area Under Curve also gives a measure of accuracy, which came out to be `r round(auc(roc(testset$loan_outcome , preds))*100 , 2)`%
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+References
+https://medium.com/@cpdough/logistic-regression-in-digital-marketing-6493b1754ee9
+
+
+https://www.datascienceblog.net/post/machine-learning/specificity-vs-precision/
+
+
+https://www.kaggle.com/code/lovishkanther1103/dimentionless-lovish-kanther/notebook
+
+https://medium.com/analytics-vidhya/confusion-matrix-accuracy-precision-recall-f1-score-ade299cf63cd
+
+
+https://www.kaggle.com/code/pavlofesenko/minimizing-risks-for-loan-investments/notebook?scriptVersionId=18745496
+
+
+
+
+
+```{r Table}
+runExample("01_hello")
+```
+```{r}
+loan
+```
+
+
+
+
+
+```{rReactivity}
+runExample("03_reactivity")
+```
+```{r}
+```
+
+
+```{r}
+runExample("04_mpg")
+
+```
+```{r}
+runExample("05_sliders")
+```
+
+```{r}
+runExample("06_tabsets")
+```
+```{r}
+runExample("07_widgets")
+```
+```{r}
+runExample("08_html")
+```
+
+```{r}
+runExample("09_upload")
+```
+
+```{r}
+runExample("11_timer")
+```
+
+renderPlot() only creates a plot, while there are a variety of other functions for other types of outputs.
+renderDataTable() creates an interactive table
+renderImage() creates an image
+renderText()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
