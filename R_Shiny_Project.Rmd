@@ -10,7 +10,7 @@ When a customer seeks for a loan, banks and other credit providers should use st
 Method
 We ran successive tests and by backwards selection we removed predictors that have not much significant contribution to the outcome of the model. We obtained the model that yielded the greatest accuracy and the least complexity
 
-We built a browser-based user interface using Shiny for banks and digital marketers to easily visualize predicted outcomes. In its current implementation, the application enables clients to make numerical inputs and obtain instant outputs and to visualize the predictors.
+We built a browser-based user interface using Shiny for banks and digital marketers to easily visualize predicted outcomes. In its current implementation, the application enables clients to make numerical inputs and obtain instant outputs and one can visualize the relationship between the predictors.
 
 Dataset Description
 The dataset consists of a synthetic bank data that was generated specifically research purposes. The data was designed to exhibit similar characteristics to genuine loan data.It consists of 77,823 and 20 columns loan records. Our project determines the best way to predict whether a loan applicant will fully repay or default on a loan. We build a machine learning model that returns the unique loan ID and a loan status label that indicates whether the loan will be fully paid, charged off or uncertain status.
@@ -133,7 +133,7 @@ Convert this categorical variable to binary variable: loan_outcome -> 1 if loan_
 #Replace missing NA with the median
 #Replace maximum open credits with the median
 #Replace missing value in Monthly Debt with median
-#Dropt `Months since last delinquent` 
+#Drop `Months since last delinquent` 
 ```{r loan2}
 # Create the new dataset for removing NA
 loan2 = loan  
@@ -166,7 +166,7 @@ sapply(loan2 , function(x) sum(is.na(x)))
 
 ```
 ```{r}
-plot(loan2$`Current Loan Amount`[loan2$`Current Loan Amount`<999999]~loan2$`Monthly Debt`[loan2$`Current Loan Amount`<999999])
+plot(`Current Loan Amount`[`Current Loan Amount`<999999]~`Monthly Debt`[`Current Loan Amount`<999999], data =loan2)
 ```
 There is a significant linear relationship between the Current Loan Amount and the Monthly Debt. We will use this model to predict the values of the values when the current loan amount =999999
 
@@ -193,7 +193,7 @@ sapply(loan2, function(x)sum(is.na(x)))
 #Visualise the relationships between the predictors
 ```{r Plot}
 ggplot(loan2 , aes(x = `Loan Status` , y = ..count.., fill = factor(loan_outcome , c(1 , 0) , c('Default' , 'No Default')) )) + 
-        geom_bar() + theme(legend.title = element_blank())
+        geom_bar() + theme(legend.title = element_blank())+labs(title= "           Charged Off vs Fully Paid")
 ```
 
 
@@ -273,7 +273,7 @@ clean_loan
 
  p = exp(X.beta) / [ 1 + exp(X.beta) ]
 
-where X.beta is the linear combination of the predictors X and beta are the coeficients.
+where X.beta is the linear combination of the predictors X and beta are the coefficients.
 
 ```{r}
 # Split dataset  25/75 into trainset and testset
@@ -356,12 +356,12 @@ for(i in thresholds){
   balanced_mean[k] = 0.5 * (sensitivity[k]+specificity[k])
   confusionMatrix[k] = array(list(confmat))
 }
-confusionMatrix[10]
+confusionMatrix[20]
 ```
 
 
 ```{r}
-confusionMatrix[15]
+confusionMatrix[40]
 ```
 
 
@@ -390,8 +390,8 @@ newdata
 We may wish to visualize the variations of the indices across thresholds:
 ```{r}
 # We gather  accuracy , sensitivity and specificity in one column
-cutoff =0.2
-ggplot(newdata, aes(x = thresholds , y = Value , color = Metric)) + geom_line(size = 1)+geom_vline(xintercept =  cutoff,color="red" , linetype = "dashed")
+cutoff =0.35
+ggplot(newdata, aes(x = thresholds , y = Value , color = Metric)) + geom_line(size = 1)+geom_vline(xintercept =  cutoff,color="red" , linetype = "dashed")+labs(title ="             Accurary vs Sensitivity Tradeoff")
 ```
 
 
@@ -402,7 +402,7 @@ The Confusion Matrix for cut off point at 0.215 will be:
 
 ```{r}
 
-preds_binomial = ifelse(preds > .4, 1 , 0)
+preds_binomial = ifelse(preds > .38, 1 , 0)
 table(testset$loan_outcome , preds_binomial)
 ```
 #However, it depends on the objective of the bank. For example, if avoiding bad loans at all cost is more important to the bank than loosing pontential viable customers, then we may forgo the accurracy and maximize the f1score with probability cut off at 0.215 and accuracy of 63% 
@@ -420,7 +420,7 @@ testset
 library(pROC)
 modelroc = roc(testset$loan_outcome , preds) 
 plot(modelroc, print.auc=TRUE, auc.polygon=TRUE,
-     grid=c(0.1, 0.2), grid.col=c("green", "red"),
+     grid=c(0.1, 0.2), grid.col=c("green", "red"), 
      max.auc.polygon=TRUE, auc.polygon.col="skyblue", print.thres=TRUE)
 ```
 ```{r}
@@ -470,7 +470,7 @@ new_prediction =ifelse(preds2>cutoff, 1,0)
 #potential_nondefaulters = testset%>% filter(preds_binomial==0 & testset$loan_outcome==0)
 #uncertain_clents = testset%>% filter((preds_binomial==1 & testset$loan_outcome==0)|(preds_binomial==0 & testset$loan_outcome==1))
 
-testset$prediction = ifelse(testset$prediction=="Potential Nondefaulter", "Potential Nondefaulter", ifelse(testset$prediction=="Potential Defaulter", "Potential Defaulter",ifelse((new_prediction==1 & testset$loan_outcome==1),"Potential Defaulter", ifelse((new_prediction==0 & testset$loan_outcome==0), "Potential Nondefaulter", "Status Unkwown"))))
+testset$prediction = ifelse(testset$prediction=="Potential Nondefaulter", "Potential Nondefaulter", ifelse(testset$prediction=="Potential Defaulter", "Potential Defaulter", ifelse((new_prediction==1 & testset$loan_outcome==1),"Potential Defaulter", ifelse((new_prediction==0 & testset$loan_outcome==0), "Potential Nondefaulter", "Status Unkwown"))))
 testset#%>% filter(`Customer ID`=="dc755ef2-1773-4d3b-8b6b-668bbae290c5")
 
 ```
@@ -492,7 +492,7 @@ table(testset2$loan_outcome , new_prediction)
 
 # Conclusion
 
-A logistic regression model was used to predict the loan status. Different cut off's were used to decide if the loan should be granted or not. Cut off of 30% gave a good accuracy of `r round(sum(diag(confusion_matrix_30)) / sum(confusion_matrix_30)*100 , 2)`%. The decision to set a cut off is arbitrary and higher levels of threshold increases the risk. The Area Under Curve also gives a measure of accuracy, which came out to be `r round(auc(roc(testset$loan_outcome , preds))*100 , 2)`%
+A logistic regression model was used to predict the loan status. Different cut off's were used to decide if the loan should be granted or not. Cut off of 0.35 gave a good accuracy of. The decision to set a cut off is arbitrary and higher levels of threshold increases the risk. The Area Under Curve ROC also gives a measure of accuracy, which came out to be 61.5%
 
 
 
@@ -542,17 +542,12 @@ https://medium.com/analytics-vidhya/confusion-matrix-accuracy-precision-recall-f
 https://www.kaggle.com/code/pavlofesenko/minimizing-risks-for-loan-investments/notebook?scriptVersionId=18745496
 
 
-
+Shiny Demo Helpful Tools
 
 
 ```{r Table}
 runExample("01_hello")
 ```
-```{r}
-loan
-```
-
-
 
 
 
@@ -588,12 +583,6 @@ runExample("09_upload")
 ```{r}
 runExample("11_timer")
 ```
-
-renderPlot() only creates a plot, while there are a variety of other functions for other types of outputs.
-renderDataTable() creates an interactive table
-renderImage() creates an image
-renderText()
-
 
 
 
