@@ -106,7 +106,7 @@ for(i in thresholds){
   balanced_mean[k] = 0.5 * (sensitivity[k]+specificity[k])
   confusionMatrix[k] = array(list(confmat))
 } 
-print(confusionMatrix)
+#print(confusionMatrix)
 data <-data.frame(thresholds ,  accuracy ,sensitivity , specificity, precision, f1score, balanced_mean)
 
 newdata = gather(data, key = 'Metric' , value = 'Value' , 2:7)
@@ -296,16 +296,20 @@ titlePanel(title="Credit Risk Classification Model for Banks and Digital Marketi
             # Output: Plot of the requested variable against mpg ----
           plotOutput("mpgPlot"),
           
-        
-         
+          
           #h4("Customer Data"),
       
           # Output: Header + table of distribution ----
           
           tableOutput("view"),
           plotOutput(outputId = "distPlot"),
-          plotOutput(outputId = "distPlot1")
+          tableOutput("values"),
+          
+          plotOutput(outputId = "distPlot1"),
          # h4("Observations"),  
+         # 
+         h4("Dataset"),
+         tableOutput("viewobs")
         )
     )
 )
@@ -417,8 +421,23 @@ server <- function(input, output) {
             geom_bar() + theme(legend.title = element_blank())
     })
     
-
-  
+    
+    sliderValues2 <- reactive({
+      
+      data.frame( confusionMatrix=
+       confusionMatrix[c(input$bins)]
+        )
+      
+    })
+    
+    # Show the values in an HTML table ----
+    output$values <- renderTable({
+      sliderValues2()
+    })
+    output$viewobs <- renderTable({
+      head(datasetInput(), n = isolate(input$obs))
+    })
+    
 }
 
 # Create Shiny app ----
