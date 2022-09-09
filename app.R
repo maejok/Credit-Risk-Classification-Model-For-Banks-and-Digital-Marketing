@@ -72,7 +72,7 @@ testset = clean_loan1[-idx , ]
 
 # We used metrics as the Akaike Information Criterion, or AIC, to explore which features
 #to include in the model to balance accuracy and complexity.
-glm.model = glm(loan_outcome ~`Credit Score`+`Annual Income`+`Debt Ratio`+`Monthly Debt`+`Current Loan Amount`, trainset, family = "binomial")
+glm.model = glm(loan_outcome ~`Credit Score`+`Annual Income`+`Debt Ratio`+`Monthly Debt`+`Current Loan Amount`+Term, trainset, family = "binomial")
 #summary(glm.model)
 
 preds = predict(glm.model , testset , type = 'response')

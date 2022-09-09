@@ -7,6 +7,13 @@ Accurate segmentation of clients is crucial in the success of any business enter
 
 When a customer seeks for a loan, banks and other credit providers should use statistical models to determine whether or not to grant the loan based on the likelihood of the loan being repaid or not. The factors involved in determining this likelihood are complex, and extensive statistical analysis and modeling are required to predict the outcome for each individual case. This model predicts loan repayment or default based on the data provided.
 
+
+
+
+The goal
+Our goal is to try to answer is: Given a cutoff point, can we  predict the potential dafaulters and potential non defaulters.If we cannot determine the status in the first prediction, can we have another model to confirm the status of the clients.  The secondary goal is to harness the data obtained to reproduce the potential nondefaulter in digital marketing. We built an interactive dashboard in shiny for our app. 
+
+
 Method
 We ran successive tests and by backwards selection we removed predictors that have not much significant contribution to the outcome of the model. We obtained the model that yielded the greatest accuracy and the least complexity
 
@@ -66,41 +73,49 @@ knitr::opts_chunk$set(echo = TRUE , warning = FALSE , message = FALSE)
 We will make use of the following libraries.
 
 ```{r}
-library(caret)
 library(tidyverse)
+library(caret)
+
 library(ggthemes)
 library(corrplot)
 library(GGally)
 library(DT)
+library(readr)
+library(randomForest)
 
+library(MASS) 
+library(reshape2) 
+library(reshape) 
 
 ```
 
 
 
 
-#Import the datasets
+#Import the datasets from the filepath
 
 ```{r}
 loan = read_csv("~/Desktop/R_Shiny_Project/loan.csv")
 loan
 ```
+
+
 # View columns names and check for missing data
-```{r columns names}
-colnames(loan)
-```
+
 #Get the summary of the data
 ```{r}
 summary(loan)
 ```
-
+#Search for missing data
 
 ```{r}
 sapply(loan , function(x) sum(is.na(x)))
 ```
+# Check for outliers. The credit score ranges between 0 and 800
 ```{r}
 loan$`Credit Score`[!is.na(loan$`Annual Income`)]
 ```
+#Check outliers
 ```{r}
 loan$`Annual Income`[!is.na(loan$`Annual Income`)]
 ```
@@ -108,7 +123,7 @@ loan$`Annual Income`[!is.na(loan$`Annual Income`)]
 
 # Visualize the dataset
 
-
+# Check the propoprtion of defaulters to non defaulters
 
 ```{r Loan_status}
 loan %>%
@@ -120,7 +135,7 @@ loan %>%
 
 
 
-# Feature Selection & Engineering
+# Data Cleaning and Feature Selection & Engineering
 Convert this categorical variable to binary variable: loan_outcome -> 1 if loan_status = 'Charged Off'. loan_outcome -> 0 if loan_status = 'Fully Paid'
 
 
@@ -139,6 +154,7 @@ Convert this categorical variable to binary variable: loan_outcome -> 1 if loan_
 loan2 = loan  
 
 loan2$loan_outcome = ifelse(loan2$`Loan Status` == "Charged Off", 1, 0)
+status = substr(loan2$`Years in current job`, 0,2)
 loan2$`Years in current job`  = ifelse(as.numeric(status) %in% seq(0:60), as.numeric(substr(loan2$`Years in current job`, 0,2)), 0)
 
 loan2$Purpose = ifelse(loan2$Purpose == "other", "Other", ifelse(loan2$Purpose == "small_business", "Business Loan", loan2$Purpose))
@@ -160,20 +176,16 @@ loan2$`Months since last delinquent`=NULL
 loan2= loan2%>% filter(!is.na(loan2$`Credit Score`))
 
 ```
-```{r}
 
-sapply(loan2 , function(x) sum(is.na(x)))
 
-```
-```{r}
-plot(`Current Loan Amount`[`Current Loan Amount`<999999]~`Monthly Debt`[`Current Loan Amount`<999999], data =loan2)
-```
-There is a significant linear relationship between the Current Loan Amount and the Monthly Debt. We will use this model to predict the values of the values when the current loan amount =999999
+
+#There is a significant linear relationship between the Current Loan Amount and the Monthly Debt. We will use this model to predict the values of the #values when the current loan amount =999999
 
 
 ```{r}
-loan2$`Current Loan Amount` = ifelse(loan2$`Current Loan Amount`>999999 , model$coefficients[1]+(model$coefficients[2])*loan2$`Monthly Debt`, loan2$`Current Loan Amount`)
+loan2$`Current Loan Amount` = ifelse(loan2$`Current Loan Amount`>999999 , median(loan2$`Current Loan Amount`<199999 ), loan2$`Current Loan Amount`)
 ```
+# Create a `Debt Ratio` Column
 ```{r}
 loan2 = loan2%>% mutate(`Debt Ratio`=(`Current Loan Amount`+`Monthly Debt`)/(0.001+`Annual Income`))
 loan2 = loan2%>% mutate(`Hist Ratio`=(`Years of Credit History`)/(0.001+`Number of Open Accounts`))
@@ -185,80 +197,199 @@ loan2
 
 
 
-```{r}
-sapply(loan2, function(x)sum(is.na(x)))
-```
-
+Visualization and Feature Enginearing
 
 #Visualise the relationships between the predictors
+
+
+```{r grade_boxplot}
+ggplot(loan2, aes(x = as.factor(loan_outcome), y = `Credit Score`, fill = loan_outcome)) + geom_boxplot()+labs(x= "Loan Outcome") 
+```
+
+```{r Annual Income boxplot}
+ggplot(loan2, aes(x = as.factor(loan_outcome), y = `Annual Income`)) + geom_boxplot(aes(fill =loan_outcome))+labs(x= "Loan Outcome") 
+```
+
+```{r Credit Score vs Purpose}
+ggplot(loan2%>% group_by(Purpose), aes(x = as.factor(Purpose), y = `Credit Score`)) + geom_boxplot(aes(fill =Purpose))+labs(x ="Purpose") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+```{r table of predictions}
+table =table(loan2$`Credit Score` , factor(loan2$loan_outcome , c(0 , 1) , c('Fully Paid' , 'Default')))
+ggplot(loan2 , aes(x =`Credit Score` , y = ..count.. , fill = factor(loan_outcome , c(0 , 1) , c(  'Fully Paid','Default')))) + 
+          theme(legend.title = element_blank()) +geom_density()+labs(title= "Credit Score agains Lon_out")
+table
+```
 ```{r Plot}
 ggplot(loan2 , aes(x = `Loan Status` , y = ..count.., fill = factor(loan_outcome , c(1 , 0) , c('Default' , 'No Default')) )) + 
         geom_bar() + theme(legend.title = element_blank())+labs(title= "           Charged Off vs Fully Paid")
 ```
+```{r}
+loan2$csrange = (cut(loan2$`Credit Score`, breaks = seq(0,800,10)))
+loan2
+```
+
+```{r Plot}
+#Checking the normality of the log_credit
+ggplot(loan2 , aes(x = `csrange` , y = log(..count..), fill = factor(loan_outcome , c(1 , 0)  ))) + 
+        geom_bar(aes(fill=factor(loan_outcome , c(1 , 0)  ))) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+```{r}
+csprob =loan2%>%group_by(csrange)%>%summarise(mean(loan_outcome))
+loan2 =left_join(loan2,csprob, by = "csrange")  
+```
+
+```{r}
+rang =seq(1,100,1)
+loan2$salarymin =1000*loan2$`Annual Income` %/%1000
+smprob =loan2%>%group_by(salarymin)%>%summarise(mean(loan_outcome))
+loan2 =left_join(loan2,smprob, by = "salarymin") 
+```
+```{r}
+loan2$salaryrange = (cut(loan2$`Annual Income`, breaks = seq(0,2000000,10000)))
+loan2
+```
+
+```{r Plot}
+#Checking the normality of the log_credit
+ggplot(loan2 , aes(x = salaryrange, y = log(..count..), fill = factor(loan_outcome , breaks = c(1 , 0)  ))) + 
+        geom_bar(aes(fill=factor(loan_outcome , c(1 , 0) ), position = "dodge2" ))+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+```{r}
+loan2
+```
+
+```{r}
+loan2$debtrange = (cut(abs(loan2$`Monthly Debt`), breaks = seq(-2,300000,1000)))
+loan2$Creditratio= ifelse(is.na(loan2$`Maximum Open Credit`),0 , log(loan2$`Maximum Open Credit`/ (loan2$`Current Credit Balance` +1)))
+
+```
+```{r}
+drprob =loan2%>%group_by(debtrange)%>%summarise(mean(loan_outcome))
+loan2 =left_join(loan2,drprob, by = "debtrange")  
+```
 
 
+```{r Plot}
+#Checking the normality of the log_credit
+ggplot(loan2 , aes(x = debtrange, y = log(..count..), fill = factor(loan_outcome , breaks = c(1 , 0)  ))) + 
+        geom_bar(aes(fill=factor(loan_outcome , c(1 , 0) ), position = "dodge2" )) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
 
+```{r}
+loan2$loanrange = (cut((loan2$`Current Loan Amount`), breaks = seq(-600,40000,1000)))
+min(loan2$`Current Loan Amount`)
+```
+```{r}
+lrprob =loan2%>%group_by(loanrange)%>%summarise(lrprob =mean(loan_outcome))
+loan2 =left_join(loan2,lrprob, by = "loanrange")  
+```
 
+```{r}
+loan2
+```
+
+```{r Plot}
+#Checking the normality of the log_credit
+ggplot(loan2 , aes(x = loanrange, y = log(..count..), fill = factor(loan_outcome , breaks = c(1 , 0)  ))) + 
+        geom_bar(aes(fill=factor(loan_outcome , c(1 , 0) ), position = "dodge2" )) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+```{r}
+loan2
+```
+
+```{r}
+loan2$`Home Ownership`=ifelse(loan2$`Home Ownership`=="Rent", 0, ifelse(loan2$`Home Ownership`=="	Own Home",1, -1))
+loan2
+```
 
 
 
 
 ```{r}
-colnames(loan2)
+
+sapply(loan2 , function(x) sum(is.na(x)))
+
 ```
-
-
-
-
-
 
 
 ```{r}
-clean_loan =loan2
-
-
-```
-
-
-
-
-`Credit Score`, `Annual Income`, `Debt Ratio`,`Tax Liens`, `Number of Open Accounts`, `Years of Credit History`,Bankruptcies, `Maximum Open Credit`,`Years in current job`,`Current Loan Amount`, `Current Credit Balance`, `Number of Credit Problems`, `Credit Problems`,`Monthly Debt`
-
-
-```{r grade_boxplot}
-ggplot(clean_loan, aes(x = as.factor(loan_outcome), y = `Credit Score`, fill = loan_outcome)) + geom_boxplot()+labs(x= "Loan Outcome") 
-```
-
-```{r Annual Income boxplot}
-ggplot(clean_loan, aes(x = as.factor(loan_outcome), y = `Annual Income`)) + geom_boxplot(aes(fill =loan_outcome))+labs(x= "Loan Outcome") 
-```
-```{r Credit Score vs Purpose}
-ggplot(clean_loan%>% group_by(Purpose), aes(x = as.factor(Purpose), y = `Credit Score`)) + geom_boxplot(aes(fill =Purpose))+labs(x ="Purpose") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-```
-
-```{r table of predictions}
-table =table(clean_loan$`Credit Score` , factor(clean_loan$loan_outcome , c(0 , 1) , c('Fully Paid' , 'Default')))
-ggplot(clean_loan , aes(x =`Credit Score` , y = ..count.. , fill = factor(loan_outcome , c(1 , 0) , c('Default' , 'Fully Paid')))) + 
-          theme(legend.title = element_blank()) + geom_bar() +geom_density()+labs(title= "Credit Score agains Lon_out")
-table
+clean_loan=loan2
 ```
 
 ```{r}
-#my_cols <- c( "#00AFBB", "#FC4E07") 
-#clean_loan =clean_loan[2:19]
+tab =table(clean_loan$Purpose, loan2$loan_outcome)[,2] / table(clean_loan$Purpose, loan2$loan_outcome)[,1]
+tab = data.frame(melt(tab, id= c(colnames(tab))))
+tab$Purpose = rownames(tab)
+
 ```
 
 ```{r}
-#corr = cor(clean_loan[c(21, 5,7,8,10,12,13,14,17,18,19,20)])
-#corr
+
+clean_loan=left_join(clean_loan,tab, by = "Purpose")
 ```
 
-Startin with all the variables,we create our model via backwards selection, taking not of the AIC and the p-values of each predictor. We drop the predictors that are not significant to our hypothesis. Our goal is to minimize the AIC while minimizing the complexity of the model.
+```{r}
+clean_loan$Term =ifelse(clean_loan$Term =="Long Term", 0,1)
+```
+
+
+Starting with all the variables,we create our model via backwards selection, taking not of the AIC and the p-values of each predictor. We drop the predictors that are not significant to our hypothesis. Our goal is to minimize the AIC while minimizing the complexity of the model.
 
 ```{r}
-clean_loan = clean_loan[c(2:22)]
+#Craete a new feature Newcol which is the probability of default when grouped by credit score and term
+clean_loan$Newcol =paste(as.character(clean_loan$`Credit Score`),clean_loan$Term, sep="")
+```
+
+```{r}
+#Craete a new feature Newcol which is the probability of default when grouped by credit score and term
+#clean_loan$Newcol2 =paste(as.character(clean_loan$`Years in current job`),clean_loan$`Home Ownership`, sep="")
+```
+```{r}
+clean_loan$New3 = clean_loan$`Maximum Open Credit`-clean_loan$`Current Credit Balance`
+```
+
+```{r}
+new =clean_loan%>%group_by(Newcol)%>%summarise(Defaultprob_byCS=mean(loan_outcome))
+new
+```
+```{r}
+clean_loan =left_join(clean_loan,new, by = "Newcol")   
+```
+
+```{r}
 clean_loan
 ```
+```{r}
+clean_loan$new4 = clean_loan$Bankruptcies+clean_loan$Bankruptcies+clean_loan$`Tax Liens`+clean_loan$`Tax Liens`+clean_loan$`Number of Credit Problems`
+sum(clean_loan$new4)
+```
+```{r}
+new5 =clean_loan%>%group_by(new4)%>%summarise(Defaultprob_=mean(loan_outcome))
+new5
+```
+```{r}
+clean_loan =left_join(clean_loan,new5, by = "new4")   
+```
+```{r}
+clean_loan
+```
+
+
+
+```{r}
+table(clean_loan$loan_outcome)
+```
+
+
+
+
+
+
+
+
+
 
 
 # Data modelling
@@ -267,7 +398,7 @@ clean_loan
 
 #* We created the binary loan_outcome which will be our response variable.
 #* We exclude some predictors in order to make the model simpler.
-#* We split the dataset to training set(75%) and testing set(25%) for the validation.
+#* We split the dataset to training set(65%) and testing set(35%) for the validation.
 #* We train a model to predict the probability of default.
 #Because we have binary response variables, we will make use  of logistic regression instead of  modelling the response variable Y directly. The logistic regression models the probability that Y belongs to a particular category, in our case the probability of a non-performing loan. This probability can be computed by the logistic function with
 
@@ -276,27 +407,88 @@ clean_loan
 where X.beta is the linear combination of the predictors X and beta are the coefficients.
 
 ```{r}
-# Split dataset  25/75 into trainset and testset
+# Split dataset  35/65 into trainset and testset
 clean_loan1= clean_loan
 
 clean_loan1$loan_outcome = as.numeric(clean_loan1$loan_outcome)
-idx = sample(nrow(clean_loan1) , 0.25*nrow(clean_loan1) , replace = F)
+idx = sample(nrow(clean_loan1) , 0.35*nrow(clean_loan1) , replace = F)
 trainset = clean_loan1[idx , ]
 testset = clean_loan1[-idx , ]
 
+mean(trainset$`Monthly Debt`)
+```
+
+
+
+```{r}
+testset$`Number of Open Accounts` = log(testset$`Number of Open Accounts`+0.01)
+```
+
+```{r}
+trainset
+```
+
+
+The coefficients of the following features is positive and significant:
+```{r}
 # Fit logistic regression
-glm.model = glm(loan_outcome ~ `Credit Score`+`Annual Income`+`Debt Ratio`+`Monthly Debt`+`Current Loan Amount`, trainset, family = "binomial")
+#glm.model = glm(loan_outcome ~., trainset[c(5,6,7,8,9,10,12,13,14,15,16,17,18,19,20,21,22,24,25,26)], family = "binomial")
+#summary(glm.model)
+```
+
+
+```{r}
+testset
+```
+
+```{r}
+# Fit logistic regression
+glm.model = glm(loan_outcome ~log(`Current Loan Amount`) +  log(Term+0.01) + `Credit Score`  +log(`Years in current job`+0.01)+`Home Ownership`+ log(`Annual Income`+0.1)+`Monthly Debt`+log(`Number of Open Accounts`)+log(`Number of Credit Problems`+0.1)+log(`Current Credit Balance`+0.1)+`Maximum Open Credit`+Bankruptcies+log(`Tax Liens`+0.10)+loan_outcome +`Debt Ratio`+log(`salarymin`+0.01)+log(`mean(loan_outcome).y`+0.01)+log(lrprob+0.01)+value+Defaultprob_byCS+Defaultprob_+log(as.numeric(New3)+0.1)+log(new4+0.1), trainset, family = "binomial")
 summary(glm.model)
 ```
-The coefficients of the following features is positive and significant:
+
+
+```{r}
+# Fit logistic regression
+glm.model = glm(loan_outcome ~ `Credit Score`  +log(`Years in current job`+0.01)+`Home Ownership`+ log(`Annual Income`+0.1)+`Monthly Debt`+log(`Number of Open Accounts`) +log(`salarymin`+0.01)+log(`mean(loan_outcome).y`+0.01)+log(lrprob+0.01)+value+Defaultprob_byCS+Defaultprob_+log(as.numeric(New3)+0.1), trainset, family = "binomial")
+summary(glm.model)
+```
+```{r}
+#BoxCoxTrans(trainset$`Current Credit Balance`+0.001)
+#trainset$`Current Credit Balance`=((trainset$`Current Credit Balance`+0.001)^0.3-1)/0.3
+```
+
+
+```{r}
+#BoxCoxTrans(trainset$`Credit Score`)
+```
+
+
+```{r}
+#trainset$`Credit Score` = 0.5*(trainset$`Credit Score`^2-1)
+```
+
+
+
+
+
+
+
+```{r}
+# Fit logistic regression
+#glm.model = glm(loan_outcome ~ `Annual Income`+ log(`Debt Ratio`)+log(`Monthly Debt`+0.001)+Defaultprob_byCS+log(`Annual #Income`)+Term+log(New3+0.001), trainset, family = "binomial")
+#summary(glm.model)
+```
+# These predictors are the main positive contributors
 
 
 `Debt Ratio` 
 `Current Loan Amount` 
+`Monthly Debt`
 This means the probability of defaulting on the given credit varies directly with these factors. For example, the more the Debt an induvudual owes, the more unlikely it is that they will be able to pay off more debts.
 
 The coefficients of the following features are negative and significant:
-TermShort Term  
+Term
 `Credit Score`  
 `Annual Income` 
 
@@ -350,7 +542,9 @@ for(i in thresholds){
   confmat = table(testset$loan_outcome , preds_binomial)
   accuracy[k] = sum(diag(confmat)) / sum(confmat)
   sensitivity[k] = confmat[1 , 1] / sum(confmat[ , 1])
-  specificity[k] = confmat[2 , 2] / sum(confmat[ , 2])
+  #print(confmat)
+  #print(confmat[2,2])
+  specificity[k] = confmat[2,2] / sum(confmat[ , 2])
   precision[k] = confmat[1 , 1] / sum(confmat[ , 1])
   f1score[k] = 2 * sensitivity[k]*precision[k]/(sensitivity[k] + precision[k])
   balanced_mean[k] = 0.5 * (sensitivity[k]+specificity[k])
@@ -390,7 +584,7 @@ newdata
 We may wish to visualize the variations of the indices across thresholds:
 ```{r}
 # We gather  accuracy , sensitivity and specificity in one column
-cutoff =0.35
+cutoff =0.38
 ggplot(newdata, aes(x = thresholds , y = Value , color = Metric)) + geom_line(size = 1)+geom_vline(xintercept =  cutoff,color="red" , linetype = "dashed")+labs(title ="             Accurary vs Sensitivity Tradeoff")
 ```
 
@@ -402,8 +596,13 @@ The Confusion Matrix for cut off point at 0.215 will be:
 
 ```{r}
 
-preds_binomial = ifelse(preds > .38, 1 , 0)
+preds_binomial = ifelse(preds > .206, 1 , 0)
 table(testset$loan_outcome , preds_binomial)
+```
+```{r}
+
+#preds_binomial = ifelse(preds > .38, 1 , 0)
+mean(testset$loan_outcome== preds_binomial)
 ```
 #However, it depends on the objective of the bank. For example, if avoiding bad loans at all cost is more important to the bank than loosing pontential viable customers, then we may forgo the accurracy and maximize the f1score with probability cut off at 0.215 and accuracy of 63% 
 In this case we deny loan to 15006 clients out of which 4514 are actually potential defaulters. We predicted accurately a total of 36038 outcomes. 
@@ -423,6 +622,7 @@ plot(modelroc, print.auc=TRUE, auc.polygon=TRUE,
      grid=c(0.1, 0.2), grid.col=c("green", "red"), 
      max.auc.polygon=TRUE, auc.polygon.col="skyblue", print.thres=TRUE)
 ```
+
 ```{r}
 preds_binomial = ifelse(preds > cutoff, 1 , 0)
 #potential_defaulters =testset%>% filter(preds_binomial==1 & testset$loan_outcome==1)
@@ -446,14 +646,20 @@ idx2 = sample(nrow(testset2), 0.35*nrow(testset2) , replace = F)
 trainset3 = testset2[idx2 , ]
 testset3 = testset2
 
+testset3
+```
+```{r}
+
 # Fit logistic regression
-glm.model2 = glm(loan_outcome ~ ., trainset3[c(19,20,11,9,7,6)] , family = "binomial")
+glm.model2 = glm(loan_outcome ~ ., trainset3[c(19,20,7,9,8,11,12,24,26,31,35,36, 6)] , family = "binomial")
 summary(glm.model2)
 ```
 
+
+
 ```{r}
-preds2 = predict(model , testset2 , type = 'response')
-modelroc2 = roc(testset2$loan_outcome , preds2) 
+preds2 = predict(glm.model2 , testset3 , type = 'response')
+modelroc2 = roc(testset3$loan_outcome , preds2) 
 plot(modelroc2, print.auc=TRUE, auc.polygon=TRUE,
      grid=c(0.1, 0.2), grid.col=c("green", "red"),
      max.auc.polygon=TRUE, auc.polygon.col="skyblue", print.thres=TRUE)
@@ -478,8 +684,11 @@ testset#%>% filter(`Customer ID`=="dc755ef2-1773-4d3b-8b6b-668bbae290c5")
 
 ```{r}
 
-table(testset2$loan_outcome , new_prediction)
+table(testset3$loan_outcome , new_prediction)
 ```
+
+
+
 
 
 
@@ -493,8 +702,6 @@ table(testset2$loan_outcome , new_prediction)
 # Conclusion
 
 A logistic regression model was used to predict the loan status. Different cut off's were used to decide if the loan should be granted or not. Cut off of 0.35 gave a good accuracy of. The decision to set a cut off is arbitrary and higher levels of threshold increases the risk. The Area Under Curve ROC also gives a measure of accuracy, which came out to be 61.5%
-
-
 
 
 
@@ -545,9 +752,7 @@ https://www.kaggle.com/code/pavlofesenko/minimizing-risks-for-loan-investments/n
 Shiny Demo Helpful Tools
 
 
-```{r Table}
-runExample("01_hello")
-```
+
 
 
 
@@ -588,13 +793,9 @@ runExample("11_timer")
 
 
 
+  
 
-
-
-
-
-
-
+  
 
 
 
